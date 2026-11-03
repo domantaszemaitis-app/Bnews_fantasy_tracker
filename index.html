@@ -61,7 +61,7 @@ tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight
 </section></main>
 <script>
 const $=id=>document.getElementById(id);
-let D=null,view="team",sortKey="fp",sortDir=-1,rnd=null,prev={};
+let latest=null,D=null,view="team",sortKey="fp",sortDir=-1,rnd=null,prev={};
 const load=k=>{try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){return{}}};
 let team=load("team"); // id -> "S" | "B" | "C"
 const save=()=>{try{localStorage.setItem("team",JSON.stringify(team))}catch(e){}};
@@ -83,8 +83,11 @@ async function poll(){
     $("badge").classList.toggle("on",!!D.live);
     $("btxt").textContent=D.live?`${D.live} game${D.live>1?"s":""} live · updating automatically`:"No live games · checking automatically";
     $("msg").textContent=D.updated&&D.error?D.error:"";
-    const rs=[...new Set(D.players.flatMap(p=>p.games.map(g=>g.round)))].sort((a,b)=>a-b);
-    if(rnd===null&&rs.length)rnd=rs[rs.length-1];
+    const rs=[...new Set([...D.players.flatMap(p=>p.games.map(g=>g.round)),...(D.rounds||[]).map(x=>x.round)])].sort((a,b)=>a-b);
+    const newest=rs.length?rs[rs.length-1]:null;
+    if(rnd===null)rnd=newest;
+    else if(newest!==null&&latest!==null&&newest>latest&&rnd===latest)rnd=newest;   // following the newest round: move along when a new one opens
+    latest=newest;
     $("round").innerHTML=`<option value="all" ${rnd==="all"?"selected":""}>All rounds (averages)</option>`+rs.slice().reverse().map(r=>`<option value="${r}" ${r==rnd?"selected":""}>Round ${r}</option>`).join("");
     render();
   }catch(e){$("msg").textContent="Can't reach the local server. Is the black window still open?"}
@@ -124,7 +127,9 @@ function render(){
   for(let i=0;i<cols.length;){const g=cols[i][2];if(!g){r1+="<th></th>";i++;continue}let j=i;while(j<cols.length&&cols[j][2]===g)j++;r1+=`<th class="gs gh" colspan="${j-i}">${g}</th>`;i=j}
   $("head1").innerHTML=r1+"<th></th>";
   $("head").innerHTML=`<th data-k="name">Player${arrow("name")}</th><th data-k="team">Team${arrow("team")}</th>`+(st?"<th>Status</th>":"")+cols.map(c=>`<th data-k="${c[0]}" class="${c[3]?"gs":""}" ${c[0]=="fc"?'title="Fouls committed"':c[0]=="fd"?'title="Fouls drawn"':""}>${c[0]=="fp"&&isAll?"FP total":c[1]}${arrow(c[0])}</th>`).join("")+"<th></th>";
-  $("mode").textContent=isAll?"All rounds: per-game averages (shooting % from totals). FP is the season total, FP avg is per game.":`Round ${rnd}: exact numbers from that round's game, updated live.`;
+  const started=!isAll&&D.players.some(p=>p.games.some(g=>g.round==rnd)),info=(D.rounds||[]).find(x=>x.round==rnd),wait=info?Math.round((info.start-Date.now()/1000)/60):0;
+  $("mode").textContent=isAll?"All rounds: per-game averages (shooting % from totals). FP is the season total, FP avg is per game.":started?`Round ${rnd}: exact numbers from that round's game, updated live.`
+    :`Round ${rnd} has not started yet.`+(info&&info.exact&&wait>0?` First tip-off in ${wait>=60?Math.floor(wait/60)+" h "+wait%60+" min":wait+" min"} (${new Date(info.start*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}). Numbers appear once the game starts.`:" Numbers appear once the first game starts.");
   const all=D.players.map(stats);
   cards(all,isAll);
   let rows=all.filter(p=>(view=="all"||team[p.id])&&(p.name+" "+p.team).toLowerCase().includes(q));

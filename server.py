@@ -1,4 +1,4 @@
-import calendar, json, os, time, urllib.error, threading, urllib.request, webbrowser
+import calendar, re, json, os, time, urllib.error, threading, urllib.request, webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
@@ -61,11 +61,10 @@ def fantasy(s, won):
 SCHED_TS = [0]
 
 def is_over(code):
-    """A game counts as final only if the schedule says played, or enough time has passed since tip-off."""
+    """A game counts as final only if the schedule says played, or enough time has passed since the latest possible tip-off."""
     g = SCHED.get(code)
     if not g or g.get("played") is True: return True
-    try: return time.time() > calendar.timegm(time.strptime(g["date"], "%Y-%m-%dT%H:%M:%S")) + 2.5*3600
-    except Exception: return True
+    return g.get("hi") is None or time.time() > g["hi"] + 2.5 * 3600
 
 def parse(code, d, over=True):
     teams = d.get("Stats") or []
@@ -89,6 +88,37 @@ def parse(code, d, over=True):
                 "tov": num(p,"Turnovers"), "pir": num(p,"Valuation"), "fp": fantasy(p, won)})
     return {"final": final, "rows": out}
 
+FETCH_LEAD = 2 * 3600   # start checking a game this long before tip-off
+SHOW_LEAD = 3600        # show a new round in the dropdown this long before its first tip-off
+
+def to_epoch(v):
+    m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$", str(v or "").strip())
+    if not m: return None, False
+    t, z = calendar.timegm(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")), m.group(2)
+    if not z: return t, False
+    if z == "Z": return t, True
+    sign = 1 if z[0] == "+" else -1
+    return t - sign * (int(z[1:3]) * 3600 + int(z[-2:]) * 60), True
+
+def tipoff(g):
+    """(earliest, latest) possible tip-off as epoch seconds. Equal when the feed states the timezone."""
+    lo = hi = None
+    for key in ("utcDate", "date"):
+        t, exact = to_epoch(g.get(key))
+        if t is None: continue
+        if exact or key == "utcDate": return t, t
+        if lo is None: lo, hi = t - 3 * 3600, t    # time without timezone: could be UTC or local arena time (up to UTC+3)
+    return lo, hi
+
+def rounds_info():
+    """Rounds to list in the dropdown even before they have stats: from SHOW_LEAD before their first tip-off."""
+    by, now = {}, time.time()
+    for g in SCHED.values():
+        if g["lo"] is None: continue
+        r = by.setdefault(g["round"], {"round": g["round"], "start": g["lo"], "exact": True})
+        r["start"] = min(r["start"], g["lo"]); r["exact"] = r["exact"] and g["lo"] == g["hi"]
+    return [r for r in sorted(by.values(), key=lambda r: r["round"]) if now >= r["start"] - SHOW_LEAD]
+
 def schedule():
     for host in ("https://api-live.euroleague.net", "https://feeds.incrowdsports.com/provider/euroleague-feeds"):
         try:
@@ -100,7 +130,9 @@ def schedule():
             for g in items:
                 code, rd = g.get("code") or g.get("gameCode"), g.get("round")
                 if isinstance(rd, dict): rd = rd.get("round") or rd.get("number") or rd.get("roundNumber")
-                if code and rd: out[int(code)] = {"round": int(rd), "played": g.get("played"), "date": str(g.get("date") or g.get("utcDate") or "")[:19]}
+                if code and rd:
+                    lo, hi = tipoff(g)
+                    out[int(code)] = {"round": int(rd), "played": g.get("played"), "lo": lo, "hi": hi}
             DEBUG.update(host=host, n=len(items), sample=items[:2])
             if out: return out
         except Exception as e:
@@ -109,25 +141,7 @@ def schedule():
 
 def wanted(g):
     if g["played"] is True: return True
-    try: return calendar.timegm(time.strptime(g["date"], "%Y-%m-%dT%H:%M:%S")) < time.time() + 14*3600
-    except Exception: return True
-
-CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"games_{SEASON}_v3.json")
-try:
-    for k, v in json.load(open(CACHE_FILE)).items(): cache[int(k)] = {"until": 1e18, "data": v}
-except Exception: pass
-
-def publish(found, errs):
-    players, live = {}, 0
-    for g in found.values():
-        live += 0 if g["final"] else 1
-        for r in g["rows"]:
-            players.setdefault(r["id"], {"id": r["id"], "name": r["name"], "team": r["team"], "games": []})["games"].append(r)
-    state.update(players=players, games=len(found), live=live, failed=errs, updated=time.strftime("%H:%M:%S"))
-    if not errs: state["error"] = None
-    try:
-        json.dump({str(c): v["data"] for c, v in cache.items() if isinstance(v["data"], dict) and v["data"]["final"]}, open(CACHE_FILE, "w"))
-    except Exception: pass
+    return g["lo"] is None or g["lo"] < time.time() + FETCH_LEAD
 
 def refresh():
     if not SCHED or time.time() - SCHED_TS[0] > 120:
@@ -163,10 +177,10 @@ class H(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         if self.path.startswith("/api/data"):
-            body = json.dumps({**state, "players": list(state["players"].values())}).encode()
+            body = json.dumps({**state, "players": list(state["players"].values()), "rounds": rounds_info()}).encode()
             self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
         elif self.path.startswith("/api/debug"):
-            body = json.dumps({"schedule": DEBUG, "rounds_known": len(set(g["round"] for g in SCHED.values())), "games_in_schedule": len(SCHED)}, default=str).encode()
+            body = json.dumps({"schedule": DEBUG, "rounds_known": len(set(g["round"] for g in SCHED.values())), "games_in_schedule": len(SCHED), "exact_tipoff_times": sum(1 for g in SCHED.values() if g["lo"] is not None and g["lo"] == g["hi"]), "visible_rounds": rounds_info()}, default=str).encode()
             self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
         else: super().do_GET()
 

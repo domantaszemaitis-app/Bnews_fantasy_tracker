@@ -82,7 +82,7 @@ async function poll(){
     $("status").textContent=D.updated?`Last update ${D.updated} · ${D.games} games loaded`+(D.failed?` · ${D.failed} failed, retrying`:""):"Loading games from Euroleague… the first load can take a few minutes. Newest games appear first.";
     $("badge").classList.toggle("on",!!D.live);
     $("btxt").textContent=D.live?`${D.live} game${D.live>1?"s":""} live · updating automatically`:"No live games · checking automatically";
-    $("msg").textContent=D.updated&&D.error?D.error:"";
+    $("msg").textContent=D.error||"";
     const rs=[...new Set([...D.players.flatMap(p=>p.games.map(g=>g.round)),...(D.rounds||[]).map(x=>x.round)])].sort((a,b)=>a-b);
     const newest=rs.length?rs[rs.length-1]:null;
     if(rnd===null)rnd=newest;

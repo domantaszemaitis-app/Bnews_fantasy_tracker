@@ -143,6 +143,23 @@ def wanted(g):
     if g["played"] is True: return True
     return g["lo"] is None or g["lo"] < time.time() + FETCH_LEAD
 
+CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"games_{SEASON}_v3.json")
+try:
+    for k, v in json.load(open(CACHE_FILE)).items(): cache[int(k)] = {"until": 1e18, "data": v}
+except Exception: pass
+
+def publish(found, errs):
+    players, live = {}, 0
+    for g in found.values():
+        live += 0 if g["final"] else 1
+        for r in g["rows"]:
+            players.setdefault(r["id"], {"id": r["id"], "name": r["name"], "team": r["team"], "games": []})["games"].append(r)
+    state.update(players=players, games=len(found), live=live, failed=errs, updated=time.strftime("%H:%M:%S"))
+    if not errs: state["error"] = None
+    try:
+        json.dump({str(c): v["data"] for c, v in cache.items() if isinstance(v["data"], dict) and v["data"]["final"]}, open(CACHE_FILE, "w"))
+    except Exception: pass
+
 def refresh():
     if not SCHED or time.time() - SCHED_TS[0] > 120:
         new = schedule()

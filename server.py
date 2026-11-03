@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 SEASON = "E2026"          # EuroLeague 2026-27. Use E2025 for last season (good for testing).
-PORT = int(os.environ.get("PORT", 8000)
+PORT = int(os.environ.get("PORT", 8000))
 GAMES_PER_ROUND = 10      # EuroLeague: 20 teams -> 10 games per round
 URL = "https://live.euroleague.net/api/Boxscore?gamecode={}&seasoncode=" + SEASON
 SCHED, DEBUG = {}, {}

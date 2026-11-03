@@ -36,8 +36,8 @@ def fetch(code):
         state["error"] = f"Game {code}: {err}"
         cache[code] = {"until": time.time() + 15, "data": "ERR"}
         return "ERR"
-    parsed = parse(code, data) if data else None
-    ttl = 1e18 if parsed and parsed["final"] else (20 if parsed else 60)
+    parsed = parse(code, data, is_over(code)) if data else None
+    ttl = 1e18 if parsed and parsed["final"] else (15 if parsed else 60)
     cache[code] = {"until": time.time() + ttl, "data": parsed}
     return parsed
 
@@ -58,13 +58,22 @@ def fantasy(s, won):
     if won is not None: f += 1.5 if won else -1.5
     return round(f, 1)
 
-def parse(code, d):
+SCHED_TS = [0]
+
+def is_over(code):
+    """A game counts as final only if the schedule says played, or enough time has passed since tip-off."""
+    g = SCHED.get(code)
+    if not g or g.get("played") is True: return True
+    try: return time.time() > calendar.timegm(time.strptime(g["date"], "%Y-%m-%dT%H:%M:%S")) + 2.5*3600
+    except Exception: return True
+
+def parse(code, d, over=True):
     teams = d.get("Stats") or []
     if len(teams) != 2: return None
     rows = [[p for p in (t.get("PlayersStats") or []) if (p.get("Player_ID") or "").strip()] for t in teams]
     tot = [sum(num(p,"Points") for p in r) for r in rows]
     if sum(tot) == 0: return None
-    final = not d.get("Live")
+    final = (not d.get("Live")) and over
     out = []
     for i, r in enumerate(rows):
         won = None if not final else tot[i] > tot[1-i]
@@ -72,7 +81,10 @@ def parse(code, d):
             if str(p.get("Minutes","")).upper() in ("DNP","","00:00"): continue
             out.append({"id": p["Player_ID"].strip(), "name": p.get("Player",""), "team": p.get("Team","").strip(),
                 "round": SCHED.get(code, {}).get("round") or (code-1)//GAMES_PER_ROUND+1, "game": code, "live": not final,
-                "min": p.get("Minutes"), "pts": num(p,"Points"), "reb": num(p,"TotalRebounds"),
+                "min": p.get("Minutes"), "pts": num(p,"Points"), "reb": num(p,"TotalRebounds"), "oreb": num(p,"OffensiveRebounds"),
+                "fg2m": num(p,"FieldGoalsMade2"), "fg2a": num(p,"FieldGoalsAttempted2"), "fg3m": num(p,"FieldGoalsMade3"), "fg3a": num(p,"FieldGoalsAttempted3"),
+                "ftm": num(p,"FreeThrowsMade"), "fta": num(p,"FreeThrowsAttempted"), "bla": num(p,"BlocksAgainst"),
+                "fc": num(p,"FoulsCommited"), "fd": num(p,"FoulsReceived"), "dreb": num(p,"DefensiveRebounds"),
                 "ast": num(p,"Assistances"), "stl": num(p,"Steals"), "blk": num(p,"BlocksFavour"),
                 "tov": num(p,"Turnovers"), "pir": num(p,"Valuation"), "fp": fantasy(p, won)})
     return {"final": final, "rows": out}
@@ -100,7 +112,7 @@ def wanted(g):
     try: return calendar.timegm(time.strptime(g["date"], "%Y-%m-%dT%H:%M:%S")) < time.time() + 14*3600
     except Exception: return True
 
-CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"games_{SEASON}.json")
+CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"games_{SEASON}_v3.json")
 try:
     for k, v in json.load(open(CACHE_FILE)).items(): cache[int(k)] = {"until": 1e18, "data": v}
 except Exception: pass
@@ -118,16 +130,19 @@ def publish(found, errs):
     except Exception: pass
 
 def refresh():
-    sch = schedule(); SCHED.update(sch)
+    if not SCHED or time.time() - SCHED_TS[0] > 120:
+        new = schedule()
+        if new: SCHED.update(new); SCHED_TS[0] = time.time()
+    sch = SCHED
     found, errs = {}, 0
     with ThreadPoolExecutor(1) as ex:
         if sch:   # normal path: fetch exactly the games that are played or about to be
-            codes = [c for c, g in sorted(sch.items()) if wanted(g)]
+            codes = [c for c, g in sorted(sch.items(), reverse=True) if wanted(g)]
             for c, g in zip(codes, ex.map(fetch, codes)):
                 if g == "ERR": errs += 1
                 elif g:
                     found[c] = g
-                    if len(found) % 8 == 0: publish(found, errs)
+                    if len(found) % 4 == 0: publish(found, errs)
         else:     # fallback: probe game numbers one after another
             last, code = 0, 1
             while code - last <= 30 and code < 500:
@@ -141,7 +156,7 @@ def loop():
     while True:
         try: refresh()
         except Exception as e: state["error"] = str(e)
-        time.sleep(30)
+        time.sleep(10 if state["live"] else 30)
 
 class H(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k): super().__init__(*a, directory=os.path.dirname(os.path.abspath(__file__)), **k)

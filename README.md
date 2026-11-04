@@ -41,7 +41,7 @@ Tap the role button at the end of a player's row to cycle through:
 | **Captain** | counts 200% |
 | **Inactive** | points are shown in grey italics but **not counted** in the total |
 
-The multipliers apply to every FP number in the table and to the **round total** at the top right. On a phone the role buttons show just **S / B / C / I**.
+The multipliers apply to every FP number in the table and to the **round total** at the top right.
 
 ### 4. Reading the table
 Columns follow the Euroleague boxscore, with fantasy points added.

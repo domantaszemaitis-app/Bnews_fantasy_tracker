@@ -65,7 +65,7 @@ tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight
  .star{font-size:16px;padding:0;width:16px;flex:none}
  td:first-child,th:first-child{box-shadow:1px 0 0 var(--line);padding-left:3px;padding-right:3px}
  td.fp{font-size:13px}.gs{border-left:0}
- .role{padding:0;width:26px;height:26px;border-radius:50%;font-size:11px}
+ .role{padding:3px 7px;font-size:10.5px;font-weight:700}
  .foot{font-size:10.5px}
 }
 @media(prefers-reduced-motion:reduce){.dot,tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight:500}
@@ -79,7 +79,7 @@ tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight
 <select id="round" title="Round"></select><input id="q" placeholder="Search player or team"><span class="tot" id="total"></span></div>
 <div class="sub" id="mode"></div><div id="msg"></div>
 <div class="wrap"><table><thead><tr id="head1"></tr><tr id="head"></tr></thead><tbody id="body"></tbody></table></div>
-<p class="sub foot">Fantasy points use Basketnews Modern scoring; win/loss (±1.5) is added when a game is final. Fouls: C/PF = committed, D/FD = drawn. Blocks: F/BK = made, A/BA = received. On phones: 2P/3P/FT = made/attempted, OR/DR/RB = offensive/defensive/total rebounds, role buttons S/B/C/I = Starter/Bench/Captain/Inactive. Captain counts ×2 and bench ×0.5 in every FP number and in the total. Inactive players keep their points visible (grey italics) but are not counted in the total. This page updates by itself.</p>
+<p class="sub foot">Fantasy points use Basketnews Modern scoring; win/loss (±1.5) is added when a game is final. Fouls: C/PF = committed, D/FD = drawn. Blocks: F/BK = made, A/BA = received. On phones: 2P/3P/FT = made/attempted, OR/DR/RB = offensive/defensive/total rebounds. Captain counts ×2 and bench ×0.5 in every FP number and in the total. Inactive players keep their points visible (grey italics) but are not counted in the total. This page updates by itself.</p>
 </section></main>
 <script>
 const $=id=>document.getElementById(id);
@@ -167,7 +167,7 @@ function render(){
     return`<tr class="${t==="I"?"inactive":""}"><td><div class="pl"><button class="star ${t?"on":""}" data-s="${p.id}" aria-label="Toggle team">${t?"★":"☆"}</button><span class="nm"><small><span class="fn">${n.first}</span><span class="tmx">${p.team}</span>${p.live?'<span class="ld" title="Live"></span>':""}</small><b title="${n.first} ${n.sur}">${n.sur}</b></span></div></td><td class="tm">${p.team}</td>`
     +(st?`<td class="stc">${p.live?'<span class="pill live">Live</span>':p.gp?'<span class="pill fin">Final</span>':"–"}</td>`:"")
     +cols.map(c=>`<td class="${c[0]=="fp"?"fp ":""}${c[3]?"gs ":""}${PCT.includes(c[0])?"pct ":""}${c[0]=="fp"&&flash?"flash":""}">${cell(p,c[0])}</td>`).join("")
-    +`<td>${t?`<button class="role ${t}" data-r="${p.id}" title="Click to switch Starter / Bench / Captain / Inactive"><span class="lg">${{S:"Starter",B:"Bench",C:"Captain",I:"Inactive"}[t]}</span><span class="sm">${t}</span></button>`:""}</td></tr>`}).join("")
+    +`<td>${t?`<button class="role ${t}" data-r="${p.id}" title="Click to switch Starter / Bench / Captain / Inactive">${{S:"Starter",B:"Bench",C:"Captain",I:"Inactive"}[t]}</button>`:""}</td></tr>`}).join("")
     :`<tr><td colspan="${cols.length+(st?4:3)}" class="empty">${view=="team"?"No players yet. Open “All players” and tap ☆ to build your team.":"No matching players."}</td></tr>`;
   prev=Object.assign(prev,nextPrev);
 }

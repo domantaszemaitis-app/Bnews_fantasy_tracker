@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 
 SEASON = "E2026"          # EuroLeague 2026-27. Use E2025 for last season (good for testing).
-PORT = int(os.environ.get("PORT", 8000))
+PORT = 8000
 GAMES_PER_ROUND = 10      # EuroLeague: 20 teams -> 10 games per round
 URL = "https://live.euroleague.net/api/Boxscore?gamecode={}&seasoncode=" + SEASON
 SCHED, DEBUG = {}, {}
@@ -19,7 +19,8 @@ def fetch(code):
             time.sleep(0.6)   # be gentle: Euroleague rate-limits fast requests
             req = urllib.request.Request(URL.format(code), headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=20) as r:
-                data = json.loads(r.read().decode("utf-8-sig"))
+                body = r.read().decode("utf-8-sig").strip()
+            data = json.loads(body) if body else None   # empty page = game has not started yet
             err = None
             break
         except urllib.error.HTTPError as e:
@@ -92,9 +93,10 @@ FETCH_LEAD = 2 * 3600   # start checking a game this long before tip-off
 SHOW_LEAD = 3600        # show a new round in the dropdown this long before its first tip-off
 
 def to_epoch(v):
-    m = re.match(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$", str(v or "").strip())
+    if isinstance(v, (int, float)) and v > 1e9: return (v / 1000 if v > 1e11 else v), True
+    m = re.match(r"(\d{4}-\d\d-\d\d)[T ](\d\d:\d\d)(?::(\d\d))?(?:\.\d+)?\s*(Z|[+-]\d\d:?\d\d)?$", str(v or "").strip())
     if not m: return None, False
-    t, z = calendar.timegm(time.strptime(m.group(1), "%Y-%m-%dT%H:%M:%S")), m.group(2)
+    t, z = calendar.timegm(time.strptime(f"{m.group(1)} {m.group(2)}:{m.group(3) or '00'}", "%Y-%m-%d %H:%M:%S")), m.group(4)
     if not z: return t, False
     if z == "Z": return t, True
     sign = 1 if z[0] == "+" else -1
@@ -103,21 +105,26 @@ def to_epoch(v):
 def tipoff(g):
     """(earliest, latest) possible tip-off as epoch seconds. Equal when the feed states the timezone."""
     lo = hi = None
-    for key in ("utcDate", "date"):
+    for key in ("utcDate", "dateUtc", "date", "localDate", "startDate"):
         t, exact = to_epoch(g.get(key))
         if t is None: continue
-        if exact or key == "utcDate": return t, t
+        if exact or key in ("utcDate", "dateUtc"): return t, t
         if lo is None: lo, hi = t - 3 * 3600, t    # time without timezone: could be UTC or local arena time (up to UTC+3)
     return lo, hi
 
 def rounds_info():
     """Rounds to list in the dropdown even before they have stats: from SHOW_LEAD before their first tip-off."""
-    by, now = {}, time.time()
-    for g in SCHED.values():
-        if g["lo"] is None: continue
-        r = by.setdefault(g["round"], {"round": g["round"], "start": g["lo"], "exact": True})
-        r["start"] = min(r["start"], g["lo"]); r["exact"] = r["exact"] and g["lo"] == g["hi"]
-    return [r for r in sorted(by.values(), key=lambda r: r["round"]) if now >= r["start"] - SHOW_LEAD]
+    now, rounds, out = time.time(), {}, []
+    for g in SCHED.values(): rounds.setdefault(g["round"], []).append(g)
+    for r, gs in sorted(rounds.items()):
+        known = [g for g in gs if g["lo"] is not None]
+        if known:
+            start = min(g["lo"] for g in known)
+            if now >= start - SHOW_LEAD:
+                out.append({"round": r, "start": start, "exact": len(known) == len(gs) and all(g["lo"] == g["hi"] for g in known)})
+        elif r - 1 in rounds and all(g["played"] is True for g in rounds[r - 1]):
+            out.append({"round": r, "start": None, "exact": False})   # no usable time in the feed: list it once the previous round is done
+    return out
 
 def schedule():
     for host in ("https://api-live.euroleague.net", "https://feeds.incrowdsports.com/provider/euroleague-feeds"):

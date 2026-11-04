@@ -29,7 +29,9 @@ The dropdown above the table decides what you see:
 - **A specific round (for example Round 9):** the exact numbers from that round's game. During a live game they update as it happens, and a **Live** marker (a green pill on a computer, a green dot next to the name on a phone) shows who is playing right now. A **Final** marker means the game is over.
 - **All rounds (averages):** per-game averages over the whole season. Shooting percentages are calculated from the totals, not averaged. *FP total* is the season total and *FP avg* is the average per game.
 
-A new round appears in the dropdown about an hour before its first tip-off, and the page switches to it automatically if you were looking at the newest round. If you chose an older round or "All rounds", it stays where you put it.
+The **next round appears in the dropdown as soon as the previous round is finished**, so you can look ahead. The page switches to it by itself about an hour before its first tip-off (or when its first game starts), but only if you were looking at the newest round. If you chose an older round or "All rounds", it stays where you put it.
+
+**The badge under the title** shows how many games are live right now. When nothing is live it counts down to the next game and shows its tip-off time in your own timezone, so you can compare it with the Euroleague site.
 
 ### 3. Set each player's role
 Tap the role button at the end of a player's row to cycle through:

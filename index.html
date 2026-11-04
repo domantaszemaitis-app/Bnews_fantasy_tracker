@@ -9,7 +9,7 @@ main{max-width:1320px;margin:0 auto;padding:22px 16px 60px}
 .top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
 h1{font-size:24px;margin:0;font-weight:800}h2{font-size:18px;margin:0 0 16px;font-weight:800}
 .sub{color:var(--mute);font-size:12.5px;margin-top:3px}
-.live-badge{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-weight:700;font-size:12.5px;white-space:nowrap}
+.live-badge{display:inline-flex;margin:8px 0 4px;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-weight:700;font-size:12.5px;white-space:nowrap}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--mute)}.on .dot{background:var(--green);animation:pulse 1.4s infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(34,197,94,0)}0%{box-shadow:0 0 0 0 rgba(34,197,94,.6)}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:22px;margin-bottom:18px}
@@ -49,7 +49,7 @@ tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight
 .sm,.ld,.tmx{display:none}
 @media(max-width:700px){
  main{padding:10px 8px 40px}.top{margin-bottom:10px}h1{font-size:19px}h2{font-size:15px;margin-bottom:10px}
- .sub{font-size:11px}.live-badge{padding:5px 10px;font-size:11px;white-space:normal;text-align:right}
+ .sub{font-size:11px}.live-badge{padding:5px 10px;font-size:11px;white-space:normal;text-align:left}
  .panel{padding:12px 10px;border-radius:18px;margin-bottom:12px}
  .cards{grid-template-columns:repeat(3,1fr);gap:8px}
  .pc{padding:9px 10px;border-radius:14px;grid-template-columns:1fr;gap:4px}.pc .badge{display:none}
@@ -72,7 +72,7 @@ tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight
 .role.I{border-style:dashed;color:var(--mute);font-style:normal}
 .flash{animation:none}}
 </style></head><body><main>
-<div class="top"><div><h1>Draft Tracker</h1><div class="sub" id="status">Loading…</div></div><div class="live-badge" id="badge"><span class="dot"></span><span id="btxt">Auto-updating</span></div></div>
+<div class="top"><div><h1>Draft Tracker</h1><div class="live-badge" id="badge"><span class="dot"></span><span id="btxt">Auto-updating</span></div><div class="sub" id="status">Loading…</div></div></div>
 <section class="panel"><h2>Best players</h2><div class="cards" id="cards"></div></section>
 <section class="panel">
 <div class="bar"><button id="tTeam" class="tab act">My team</button><button id="tAll" class="tab">All players</button>
@@ -99,15 +99,30 @@ const mmss=s=>{s=Math.round(s);return Math.floor(s/60)+":"+String(s%60).padStart
 const title=s=>String(s||"").toLowerCase().replace(/(^|[\s'’\-])(\p{L})/gu,(m,a,b)=>a+b.toUpperCase());
 const names=n=>{const [sur,first]=String(n).split(",").map(x=>x.trim());return{sur:title(sur),first:title(first||"")}};
 
+function badge(){
+  if(!D)return;
+  const live=D.live,ng=D.next_game;
+  $("badge").classList.toggle("on",!!live);$("badge").title="";
+  let t="No live games · checking automatically";
+  if(live)t=`${live} game${live>1?"s":""} live now`;
+  else if(ng&&ng.exact){
+    const s=Math.round(ng.start-Date.now()/1000),d=new Date(ng.start*1000);
+    const left=s>=86400?Math.floor(s/86400)+" d "+Math.floor(s%86400/3600)+" h":s>=3600?Math.floor(s/3600)+" h "+Math.floor(s%3600/60)+" min":Math.floor(s/60)+" min "+s%60+" s";
+    t=s>0?`Next game in ${left} · ${d.toLocaleString([],{weekday:"short",hour:"2-digit",minute:"2-digit"})}`:"Game starting…";
+    $("badge").title=`Round ${ng.round}, tip-off ${d.toLocaleString()} (your local time)`;
+  }
+  $("btxt").textContent=t;
+}
 async function poll(){
   try{D=await (await fetch("/api/data")).json();
     $("status").textContent=D.updated?`Last update ${D.updated} · ${D.games} games loaded`+(D.failed?` · ${D.failed} failed, retrying`:""):"Loading games from Euroleague… the first load can take a few minutes. Newest games appear first.";
-    $("badge").classList.toggle("on",!!D.live);
-    $("btxt").textContent=D.live?`${D.live} game${D.live>1?"s":""} live · updating automatically`:"No live games · checking automatically";
+    badge();
     $("msg").textContent=D.error||"";
-    const rs=[...new Set([...D.players.flatMap(p=>p.games.map(g=>g.round)),...(D.rounds||[]).map(x=>x.round)])].sort((a,b)=>a-b);
-    const newest=rs.length?rs[rs.length-1]:null;
-    if(rnd===null)rnd=newest;
+    const dataRounds=D.players.flatMap(p=>p.games.map(g=>g.round)),num=(a,b)=>a-b;
+    const rs=[...new Set([...dataRounds,...(D.rounds||[]).map(x=>x.round)])].sort(num);                       // listed in the dropdown
+    const act=[...new Set([...dataRounds,...(D.rounds||[]).filter(x=>x.soon).map(x=>x.round)])].sort(num);    // rounds the page may switch to
+    const newest=act.length?act[act.length-1]:null;
+    if(rnd===null)rnd=newest!==null?newest:(rs.length?rs[rs.length-1]:null);
     else if(newest!==null&&latest!==null&&newest>latest&&rnd===latest)rnd=newest;   // following the newest round: move along when a new one opens
     latest=newest;
     $("round").innerHTML=`<option value="all" ${rnd==="all"?"selected":""}>All rounds (averages)</option>`+rs.slice().reverse().map(r=>`<option value="${r}" ${r==rnd?"selected":""}>Round ${r}</option>`).join("");
@@ -177,5 +192,5 @@ document.addEventListener("click",e=>{const t=e.target.closest("button,th")||e.t
   else if(t.dataset.k){sortDir=sortKey==t.dataset.k?-sortDir:-1;sortKey=t.dataset.k;if(sortKey=="name"||sortKey=="team")sortDir=1;render()}});
 $("tTeam").onclick=()=>{view="team";render()};$("tAll").onclick=()=>{view="all";render()};
 $("q").oninput=render;$("round").onchange=e=>{rnd=e.target.value==="all"?"all":+e.target.value;render()};
-poll();setInterval(poll,10000);
+poll();setInterval(poll,10000);setInterval(badge,1000);
 </script></body></html>

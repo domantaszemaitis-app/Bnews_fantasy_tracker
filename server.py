@@ -112,19 +112,31 @@ def tipoff(g):
         if lo is None: lo, hi = t - 3 * 3600, t    # time without timezone: could be UTC or local arena time (up to UTC+3)
     return lo, hi
 
+def round_done(gs):
+    now = time.time()
+    return all(g["played"] is True or (g["hi"] is not None and now > g["hi"] + 3 * 3600) for g in gs)
+
 def rounds_info():
-    """Rounds to list in the dropdown even before they have stats: from SHOW_LEAD before their first tip-off."""
+    """Rounds to list in the dropdown before they have stats: the next round as soon as the previous one is finished,
+    or from SHOW_LEAD before its first tip-off. 'soon' = close enough to tip-off for the page to switch to it."""
     now, rounds, out = time.time(), {}, []
     for g in SCHED.values(): rounds.setdefault(g["round"], []).append(g)
     for r, gs in sorted(rounds.items()):
         known = [g for g in gs if g["lo"] is not None]
-        if known:
-            start = min(g["lo"] for g in known)
-            if now >= start - SHOW_LEAD:
-                out.append({"round": r, "start": start, "exact": len(known) == len(gs) and all(g["lo"] == g["hi"] for g in known)})
-        elif r - 1 in rounds and all(g["played"] is True for g in rounds[r - 1]):
-            out.append({"round": r, "start": None, "exact": False})   # no usable time in the feed: list it once the previous round is done
+        start = min((g["lo"] for g in known), default=None)
+        exact = bool(known) and len(known) == len(gs) and all(g["lo"] == g["hi"] for g in known)
+        soon = start is not None and now >= start - SHOW_LEAD
+        if soon or (r - 1 in rounds and round_done(rounds[r - 1])):
+            out.append({"round": r, "start": start, "exact": exact, "soon": soon})
     return out
+
+def next_game():
+    """The next game that has not tipped off yet (start = epoch seconds; exact = the feed gave a timezone)."""
+    now, best = time.time(), None
+    for c, g in SCHED.items():
+        if g["played"] is True or g["lo"] is None or g["lo"] <= now: continue
+        if best is None or g["lo"] < best[1]["lo"]: best = (c, g)
+    return {"code": best[0], "round": best[1]["round"], "start": best[1]["lo"], "exact": best[1]["lo"] == best[1]["hi"]} if best else None
 
 def schedule():
     for host in ("https://api-live.euroleague.net", "https://feeds.incrowdsports.com/provider/euroleague-feeds"):
@@ -201,10 +213,10 @@ class H(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         if self.path.startswith("/api/data"):
-            body = json.dumps({**state, "players": list(state["players"].values()), "rounds": rounds_info()}).encode()
+            body = json.dumps({**state, "players": list(state["players"].values()), "rounds": rounds_info(), "next_game": next_game()}).encode()
             self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
         elif self.path.startswith("/api/debug"):
-            body = json.dumps({"schedule": DEBUG, "rounds_known": len(set(g["round"] for g in SCHED.values())), "games_in_schedule": len(SCHED), "exact_tipoff_times": sum(1 for g in SCHED.values() if g["lo"] is not None and g["lo"] == g["hi"]), "visible_rounds": rounds_info()}, default=str).encode()
+            body = json.dumps({"schedule": DEBUG, "rounds_known": len(set(g["round"] for g in SCHED.values())), "games_in_schedule": len(SCHED), "exact_tipoff_times": sum(1 for g in SCHED.values() if g["lo"] is not None and g["lo"] == g["hi"]), "visible_rounds": rounds_info(), "next_game": next_game()}, default=str).encode()
             self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
         else: super().do_GET()
 

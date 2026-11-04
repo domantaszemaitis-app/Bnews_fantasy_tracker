@@ -3,7 +3,7 @@
 <title>Draft Tracker</title>
 <style>
 :root{--bg:#05090d;--panel:#0a1016;--line:#18222b;--head:#141d25;--ink:#fff;--mute:#8d99a6;--green:#22c55e;--orange:#ff6b1a;color-scheme:dark}
-*{box-sizing:border-box}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.35 Inter,"Segoe UI",system-ui,sans-serif}
 main{max-width:1320px;margin:0 auto;padding:22px 16px 60px}
 .top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
@@ -46,6 +46,29 @@ tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight
 .flash{animation:fl 2.2s ease-out}@keyframes fl{from{background:rgba(34,197,94,.55)}to{background:transparent}}
 .empty{padding:34px;text-align:center;color:var(--mute)}#msg{color:#ff8a8a;font-size:13px}
 .foot{margin-top:6px}
+.sm,.ld,.tmx{display:none}
+@media(max-width:700px){
+ main{padding:10px 8px 40px}.top{margin-bottom:10px}h1{font-size:19px}h2{font-size:15px;margin-bottom:10px}
+ .sub{font-size:11px}.live-badge{padding:5px 10px;font-size:11px;white-space:normal;text-align:right}
+ .panel{padding:12px 10px;border-radius:18px;margin-bottom:12px}
+ .cards{grid-template-columns:repeat(3,1fr);gap:8px}
+ .pc{padding:9px 10px;border-radius:14px;grid-template-columns:1fr;gap:4px}.pc .badge{display:none}
+ .pc small{font-size:9.5px}.pc .big{font-size:21px}.pc .mid{font-size:14px}.pc .who{font-size:12.5px;padding-top:6px}.pc .who span{font-size:10.5px}
+ .bar{gap:6px}button,input,select{padding:6px 12px;font-size:13px}input{min-width:0;flex:1 1 120px}
+ .tot{width:100%;margin:2px 0 0;font-size:16px}
+ table{min-width:0;width:max-content;font-size:11.5px}
+ th,td{padding:7px 4px}
+ thead th{font-size:10px;font-weight:700;letter-spacing:.2px}
+ #head1,.pct,.tm,.stc,.lg{display:none}
+ .sm{display:inline}.ld{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-left:4px;animation:pulse 1.4s infinite}
+ .tmx{display:inline}
+ .pl{min-width:0;width:78px;gap:1px}.nm{min-width:0;flex:1;overflow:hidden}.nm small{font-size:9px;white-space:nowrap}.nm b{display:block;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .fn{display:none}.star{font-size:16px;padding:0;width:16px;flex:none}
+ td:first-child,th:first-child{box-shadow:1px 0 0 var(--line);padding-left:3px;padding-right:3px}
+ td.fp{font-size:13px}.gs{border-left:0}
+ .role{padding:0;width:26px;height:26px;border-radius:50%;font-size:11px}
+ .foot{font-size:10.5px}
+}
 @media(prefers-reduced-motion:reduce){.dot,tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight:500}
 .role.I{border-style:dashed;color:var(--mute);font-style:normal}
 .flash{animation:none}}
@@ -57,7 +80,7 @@ tr.inactive td{color:var(--mute);font-style:italic}tr.inactive .nm b{font-weight
 <select id="round" title="Round"></select><input id="q" placeholder="Search player or team"><span class="tot" id="total"></span></div>
 <div class="sub" id="mode"></div><div id="msg"></div>
 <div class="wrap"><table><thead><tr id="head1"></tr><tr id="head"></tr></thead><tbody id="body"></tbody></table></div>
-<p class="sub foot">Fantasy points use Basketnews Modern scoring; win/loss (±1.5) is added when a game is final. Fouls: C = committed, D = drawn. Blocks: F = made, A = received. Captain counts ×2 and bench ×0.5 in every FP number and in the total. Inactive players keep their points visible (grey italics) but are not counted in the total. This page updates by itself.</p>
+<p class="sub foot">Fantasy points use Basketnews Modern scoring; win/loss (±1.5) is added when a game is final. Fouls: C/PF = committed, D/FD = drawn. Blocks: F/BK = made, A/BA = received. On phones: 2P/3P/FT = made/attempted, OR/DR/RB = offensive/defensive/total rebounds, role buttons S/B/C/I = Starter/Bench/Captain/Inactive. Captain counts ×2 and bench ×0.5 in every FP number and in the total. Inactive players keep their points visible (grey italics) but are not counted in the total. This page updates by itself.</p>
 </section></main>
 <script>
 const $=id=>document.getElementById(id);
@@ -66,11 +89,11 @@ const load=k=>{try{return JSON.parse(localStorage.getItem(k))||{}}catch(e){retur
 let team=load("team"); // id -> "S" | "B" | "C"
 const save=()=>{try{localStorage.setItem("team",JSON.stringify(team))}catch(e){}};
 const MULT={S:1,B:.5,C:2,I:1},f1=x=>(Math.round(x*10)/10).toFixed(1);
-// [key, label, group, starts-a-block, only-in-all-rounds]
-const SPEC=[["gp","GP","",0,1],["fp","FP","",0],["avg","FP avg","",0,1],["min","Min","",1],["pts","PTS","",0],
- ["fg2","M/A","2FG",1],["fg2p","%","2FG",0],["fg3","M/A","3FG",1],["fg3p","%","3FG",0],["ft","M/A","FT",1],["ftp","%","FT",0],
- ["oreb","O","Rebounds",1],["dreb","D","Rebounds",0],["reb","T","Rebounds",0],["ast","AST","",1],["stl","STL","",0],["tov","TO","",0],
- ["blk","F","Blocks",1],["bla","A","Blocks",0],["fc","C","Fouls",1],["fd","D","Fouls",0],["pir","PIR","",1]];
+// [key, label, group, starts-a-block, only-in-all-rounds, short label for phones]
+const SPEC=[["gp","GP","",0,1,"GP"],["fp","FP","",0,0,"FP"],["avg","FP avg","",0,1,"AVG"],["min","Min","",1,0,"MIN"],["pts","PTS","",0,0,"PTS"],
+ ["fg2","M/A","2FG",1,0,"2P"],["fg2p","%","2FG",0,0,"2%"],["fg3","M/A","3FG",1,0,"3P"],["fg3p","%","3FG",0,0,"3%"],["ft","M/A","FT",1,0,"FT"],["ftp","%","FT",0,0,"FT%"],
+ ["oreb","O","Rebounds",1,0,"OR"],["dreb","D","Rebounds",0,0,"DR"],["reb","T","Rebounds",0,0,"RB"],["ast","AST","",1,0,"AS"],["stl","STL","",0,0,"ST"],["tov","TO","",0,0,"TO"],
+ ["blk","F","Blocks",1,0,"BK"],["bla","A","Blocks",0,0,"BA"],["fc","C","Fouls",1,0,"PF"],["fd","D","Fouls",0,0,"FD"],["pir","PIR","",1,0,"PIR"]];
 const fmt=x=>x==null?"–":(Number.isInteger(x)?String(x):f1(x));
 const mins=s=>{const t=String(s||"0:0").split(":");return (+t[0]||0)*60+(+t[1]||0)};
 const mmss=s=>{s=Math.round(s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
@@ -126,7 +149,8 @@ function render(){
   let r1="<th colspan='"+(st?3:2)+"'></th>";
   for(let i=0;i<cols.length;){const g=cols[i][2];if(!g){r1+="<th></th>";i++;continue}let j=i;while(j<cols.length&&cols[j][2]===g)j++;r1+=`<th class="gs gh" colspan="${j-i}">${g}</th>`;i=j}
   $("head1").innerHTML=r1+"<th></th>";
-  $("head").innerHTML=`<th data-k="name">Player${arrow("name")}</th><th data-k="team">Team${arrow("team")}</th>`+(st?"<th>Status</th>":"")+cols.map(c=>`<th data-k="${c[0]}" class="${c[3]?"gs":""}" ${c[0]=="fc"?'title="Fouls committed"':c[0]=="fd"?'title="Fouls drawn"':""}>${c[0]=="fp"&&isAll?"FP total":c[1]}${arrow(c[0])}</th>`).join("")+"<th></th>";
+  const PCT=["fg2p","fg3p","ftp"];
+  $("head").innerHTML=`<th data-k="name">Player${arrow("name")}</th><th data-k="team" class="tm">Team${arrow("team")}</th>`+(st?'<th class="stc">Status</th>':"")+cols.map(c=>`<th data-k="${c[0]}" class="${c[3]?"gs ":""}${PCT.includes(c[0])?"pct":""}" ${c[0]=="fc"?'title="Fouls committed"':c[0]=="fd"?'title="Fouls drawn"':""}><span class="lg">${c[0]=="fp"&&isAll?"FP total":c[1]}</span><span class="sm">${c[5]}</span>${arrow(c[0])}</th>`).join("")+"<th></th>";
   const started=!isAll&&D.players.some(p=>p.games.some(g=>g.round==rnd)),info=(D.rounds||[]).find(x=>x.round==rnd),wait=info?Math.round((info.start-Date.now()/1000)/60):0;
   $("mode").textContent=isAll?"All rounds: per-game averages (shooting % from totals). FP is the season total, FP avg is per game.":started?`Round ${rnd}: exact numbers from that round's game, updated live.`
     :`Round ${rnd} has not started yet.`+(info&&info.exact&&wait>0?` First tip-off in ${wait>=60?Math.floor(wait/60)+" h "+wait%60+" min":wait+" min"} (${new Date(info.start*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}). Numbers appear once the game starts.`:" Numbers appear once the first game starts.");
@@ -141,10 +165,10 @@ function render(){
   const nextPrev={};
   $("body").innerHTML=rows.length?rows.map(p=>{const t=team[p.id],n=names(p.name),key=p.id+"|"+rnd;nextPrev[key]=p.fp;
     const flash=key in prev&&prev[key]!==p.fp&&p.fp!=null;
-    return`<tr class="${t==="I"?"inactive":""}"><td><div class="pl"><button class="star ${t?"on":""}" data-s="${p.id}" aria-label="Toggle team">${t?"★":"☆"}</button><span class="nm"><small>${n.first}</small><b>${n.sur}</b></span></div></td><td>${p.team}</td>`
-    +(st?`<td>${p.live?'<span class="pill live">Live</span>':p.gp?'<span class="pill fin">Final</span>':"–"}</td>`:"")
-    +cols.map(c=>`<td class="${c[0]=="fp"?"fp ":""}${c[3]?"gs ":""}${c[0]=="fp"&&flash?"flash":""}">${cell(p,c[0])}</td>`).join("")
-    +`<td>${t?`<button class="role ${t}" data-r="${p.id}" title="Click to switch Starter / Bench / Captain / Inactive">${{S:"Starter",B:"Bench",C:"Captain",I:"Inactive"}[t]}</button>`:""}</td></tr>`}).join("")
+    return`<tr class="${t==="I"?"inactive":""}"><td><div class="pl"><button class="star ${t?"on":""}" data-s="${p.id}" aria-label="Toggle team">${t?"★":"☆"}</button><span class="nm"><small><span class="fn">${n.first}</span><span class="tmx">${p.team}</span>${p.live?'<span class="ld" title="Live"></span>':""}</small><b title="${n.first} ${n.sur}">${n.sur}</b></span></div></td><td class="tm">${p.team}</td>`
+    +(st?`<td class="stc">${p.live?'<span class="pill live">Live</span>':p.gp?'<span class="pill fin">Final</span>':"–"}</td>`:"")
+    +cols.map(c=>`<td class="${c[0]=="fp"?"fp ":""}${c[3]?"gs ":""}${PCT.includes(c[0])?"pct ":""}${c[0]=="fp"&&flash?"flash":""}">${cell(p,c[0])}</td>`).join("")
+    +`<td>${t?`<button class="role ${t}" data-r="${p.id}" title="Click to switch Starter / Bench / Captain / Inactive"><span class="lg">${{S:"Starter",B:"Bench",C:"Captain",I:"Inactive"}[t]}</span><span class="sm">${t}</span></button>`:""}</td></tr>`}).join("")
     :`<tr><td colspan="${cols.length+(st?4:3)}" class="empty">${view=="team"?"No players yet. Open “All players” and tap ☆ to build your team.":"No matching players."}</td></tr>`;
   prev=Object.assign(prev,nextPrev);
 }

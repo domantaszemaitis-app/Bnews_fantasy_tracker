@@ -21,6 +21,7 @@ def fetch(code):
             with urllib.request.urlopen(req, timeout=20) as r:
                 body = r.read().decode("utf-8-sig").strip()
             data = json.loads(body) if body else None   # empty page = game has not started yet
+            if isinstance(data, dict) and "boxscore_keys" not in DEBUG: DEBUG.update(boxscore_keys=sorted(data.keys()), byquarter_sample=data.get("ByQuarter"))
             err = None
             break
         except urllib.error.HTTPError as e:
@@ -67,6 +68,23 @@ def is_over(code):
     if not g or g.get("played") is True: return True
     return g.get("hi") is None or time.time() > g["hi"] + 2.5 * 3600
 
+def quarter_of(d):
+    """Current quarter (1-4, 5+ = overtime) from the per-quarter points; None if the feed has no usable data."""
+    try:
+        per = []
+        for t in d.get("ByQuarter") or []:
+            keys = [k for k in t if re.search(r"quarter|extra|^q\d|ot", str(k), re.I)] or list(t)
+            vals = []
+            for k in keys:
+                try: vals.append(float(t[k]))
+                except (TypeError, ValueError): pass
+            per.append(vals)
+        n = 0
+        for i in range(max(len(v) for v in per)):
+            if any(i < len(v) and v[i] > 0 for v in per): n = i + 1
+        return n or 1
+    except Exception: return None
+
 def parse(code, d, over=True):
     teams = d.get("Stats") or []
     if len(teams) != 2: return None
@@ -87,7 +105,7 @@ def parse(code, d, over=True):
                 "fc": num(p,"FoulsCommited"), "fd": num(p,"FoulsReceived"), "dreb": num(p,"DefensiveRebounds"),
                 "ast": num(p,"Assistances"), "stl": num(p,"Steals"), "blk": num(p,"BlocksFavour"),
                 "tov": num(p,"Turnovers"), "pir": num(p,"Valuation"), "fp": fantasy(p, won)})
-    return {"final": final, "rows": out}
+    return {"final": final, "rows": out, "q": quarter_of(d), "names": [t.get("Team") for t in teams]}
 
 FETCH_LEAD = 2 * 3600   # start checking a game this long before tip-off
 SHOW_LEAD = 3600        # show a new round in the dropdown this long before its first tip-off
@@ -130,6 +148,31 @@ def rounds_info():
             out.append({"round": r, "start": start, "exact": exact, "soon": soon})
     return out
 
+def games_info():
+    """Every scheduled game with status, score, quarter and teams (scores come from the loaded boxscores)."""
+    now, out = time.time(), []
+    for code, g in sorted(SCHED.items()):
+        c = cache.get(code)
+        d = c["data"] if c and isinstance(c["data"], dict) else None
+        teams = [dict(t) for t in (g.get("teams") or [{}, {}])]
+        m = {"code": code, "round": g["round"], "start": g["lo"], "exact": g["lo"] is not None and g["lo"] == g["hi"],
+             "venue": g.get("venue"), "status": "scheduled", "scores": [None, None], "q": None, "teams": teams}
+        if d:
+            order, pts = [], {}
+            for r in d["rows"]:
+                if r["team"] not in pts: order.append(r["team"]); pts[r["team"]] = 0
+                pts[r["team"]] += r["pts"]
+            names = d.get("names") or [None, None]
+            for i in range(min(2, len(order))):
+                teams[i]["code"] = order[i]
+                teams[i]["name"] = names[i] or teams[i].get("name")
+                m["scores"][i] = pts[order[i]]
+            m["status"], m["q"] = ("final", None) if d["final"] else ("live", d.get("q"))
+        elif g["played"] is True: m["status"] = "final"
+        elif g["lo"] is not None and g["lo"] <= now: m["status"] = "starting"
+        out.append(m)
+    return out
+
 def next_game():
     """The next game that has not tipped off yet (start = epoch seconds; exact = the feed gave a timezone)."""
     now, best = time.time(), None
@@ -137,6 +180,11 @@ def next_game():
         if g["played"] is True or g["lo"] is None or g["lo"] <= now: continue
         if best is None or g["lo"] < best[1]["lo"]: best = (c, g)
     return {"code": best[0], "round": best[1]["round"], "start": best[1]["lo"], "exact": best[1]["lo"] == best[1]["hi"]} if best else None
+
+def club(o):
+    o = o if isinstance(o, dict) else {}
+    c = o.get("club") if isinstance(o.get("club"), dict) else o
+    return {"name": c.get("name") or c.get("editorialName") or c.get("abbreviatedName") or c.get("code"), "code": c.get("code") or c.get("abbreviatedName")}
 
 def schedule():
     for host in ("https://api-live.euroleague.net", "https://feeds.incrowdsports.com/provider/euroleague-feeds"):
@@ -151,7 +199,10 @@ def schedule():
                 if isinstance(rd, dict): rd = rd.get("round") or rd.get("number") or rd.get("roundNumber")
                 if code and rd:
                     lo, hi = tipoff(g)
-                    out[int(code)] = {"round": int(rd), "played": g.get("played"), "lo": lo, "hi": hi}
+                    v = g.get("venue")
+                    out[int(code)] = {"round": int(rd), "played": g.get("played"), "lo": lo, "hi": hi,
+                                      "teams": [club(g.get("local")), club(g.get("road"))],
+                                      "venue": (v.get("name") if isinstance(v, dict) else v) or None}
             DEBUG.update(host=host, n=len(items), sample=items[:2])
             if out: return out
         except Exception as e:
@@ -213,7 +264,7 @@ class H(SimpleHTTPRequestHandler):
     def log_message(self, *a): pass
     def do_GET(self):
         if self.path.startswith("/api/data"):
-            body = json.dumps({**state, "players": list(state["players"].values()), "rounds": rounds_info(), "next_game": next_game()}).encode()
+            body = json.dumps({**state, "players": list(state["players"].values()), "rounds": rounds_info(), "next_game": next_game(), "matches": games_info()}).encode()
             self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body)
         elif self.path.startswith("/api/debug"):
             body = json.dumps({"schedule": DEBUG, "rounds_known": len(set(g["round"] for g in SCHED.values())), "games_in_schedule": len(SCHED), "exact_tipoff_times": sum(1 for g in SCHED.values() if g["lo"] is not None and g["lo"] == g["hi"]), "visible_rounds": rounds_info(), "next_game": next_game()}, default=str).encode()

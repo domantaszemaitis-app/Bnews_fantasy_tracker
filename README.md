@@ -14,6 +14,7 @@ Follow your Basketnews **EuroLeague Draft** team live, without opening every box
 - Calculates fantasy points for every player with the Basketnews **Modern** scoring system (see below).
 - Lets you build your own team by starring players, and shows the full boxscore line for each of them, similar to the Euroleague website, plus fantasy points.
 - Updates live during games with no page refresh needed.
+- Lists every game of a round with live scores, and opens a live boxscore for each game.
 - Works on a phone as well as on a computer.
 
 ## Using the app
@@ -63,6 +64,15 @@ Tap a column title to sort by it. The **Best players** strip at the top shows th
 
 **On a phone** the layout is more compact: smaller text, short column names (2P, 3P, FT, OR, DR, RB, AS, ST, TO, BK, BA, PF, FD), no percentage columns, and the player column stays in place while you scroll sideways. 2P, 3P and FT show made/attempted, OR/DR/RB are offensive, defensive and total rebounds, BK/BA are blocks made and received, and PF/FD are fouls committed and drawn.
 
+### 5. Games tab
+Tap **Games** (next to *My team* and *All players*) to see every game of the selected round, like the Euroleague schedule:
+
+- **Status:** *Live* with the current quarter, *Final*, or the tip-off time in your own timezone.
+- **Venue**, both teams and the **score**. Live scores update by themselves, and the leading team's score is highlighted.
+- **Tap a game** to open its **live boxscore**. Switch between the two teams at the top to see every player's line with fantasy points, plus a team total row. Use **← All games** to go back.
+- In the boxscore, FP is the player's plain fantasy score (no captain/bench multiplier). Tap ☆ to add a player to your team.
+- With "All rounds" selected, the Games tab shows the newest round. Pick another round in the dropdown to look at older ones.
+
 ## How fantasy points are calculated (Modern scoring)
 
 | Action | Points |
@@ -96,6 +106,7 @@ How the app applies a few of these:
 - **Where the data comes from:** Euroleague's public stats feed. It is not an official developer product and could change without notice. If that happens the app may stop loading until it is adjusted.
 - **How fast it updates:** the server checks live games roughly every 15 seconds and the page asks the server for news every 10 seconds, so numbers can run a little behind the Euroleague site.
 - **Official numbers rule:** Basketnews is the reference for your league. If the app and Basketnews ever disagree (for example after a stat correction), trust Basketnews and tell whoever maintains the app.
+- **Game scores and quarters:** scores are added up from the players' boxscore points. The current quarter (Q1 to Q4, OT) is worked out from the points per quarter, so it can lag by a moment at the start of a quarter. Venue and club names come from Euroleague's schedule and may occasionally be missing.
 - **Not included:** player positions, photos, wildcards (Triple Captain, Bench Boost), trades and league standings between friends. The app only tracks your own team's points.
 - **First load is slow:** the first time the app starts it downloads every game of the season, one at a time, which can take a few minutes. Newest games appear first. Finished games are then saved on the server, so later loads are quick. On free hosting the server may also go to sleep when nobody uses it, so the first visit after a quiet period can take a moment.
 
